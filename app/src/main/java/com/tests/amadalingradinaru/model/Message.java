@@ -3,6 +3,9 @@ package com.tests.amadalingradinaru.model;
 import com.bluelinelabs.logansquare.annotation.JsonField;
 import com.bluelinelabs.logansquare.annotation.JsonObject;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+
 /**
  * Created by a.madalin.gradinaru on 07/02/2018.
  */
@@ -12,15 +15,24 @@ public class Message {
     /*
     * Annotate a field that you want sent with the @JsonField marker.
     */
+
     @JsonField
-    public String description;
+    public boolean isGameOver;
+
+    @JsonField
+    public boolean isXTurn;
 
     @JsonField
     public int position;
 
     @JsonField
-    public String mark;
+    public ArrayList<String> marks;
 
+    @JsonField
+    public int restart;
+
+    @JsonField
+    public boolean isNewGame;
 
     /*
      * Note that since this field isn't annotated as a

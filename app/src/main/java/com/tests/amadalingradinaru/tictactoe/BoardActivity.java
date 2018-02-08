@@ -37,7 +37,7 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
     GridView gvBoard;
 
     Button btnRestart;
-
+    boolean isNewGame = true;
 
     ArrayList<String> marks = new ArrayList<String>(){
         {
@@ -75,7 +75,7 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
         isServer = getIntent().getExtras().getBoolean(TTTConstants.BK_IS_SERVER);
 
         SalutDataReceiver dataReceiver = new SalutDataReceiver(this, this);
-        SalutServiceData serviceData = new SalutServiceData("sas", 50489, "TTT instance");
+        SalutServiceData serviceData = new SalutServiceData("sas", 50647, "TTT instance");
 
         network = new Salut(dataReceiver, serviceData, new SalutCallback() {
             @Override
@@ -92,8 +92,11 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
                     @Override
                     public void call(SalutDevice device) {
                         Log.d(TAG, device.readableName + " has connected!");
+                        Toast.makeText(BoardActivity.this, "Connection established",Toast.LENGTH_SHORT).show();
                     }
                 });
+
+                if( network.isRunningAsHost ) Toast.makeText(BoardActivity.this, "Server running",Toast.LENGTH_SHORT).show();
             }else {
                 network.discoverNetworkServices(new SalutDeviceCallback() {
                     @Override
@@ -133,56 +136,67 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
             @Override
             public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
                 if(marks.get(i).equalsIgnoreCase(" ")) {
+                    Message mMessage = new Message();
 
-                    if (isXTurn && network.isRunningAsHost) {
-                        marks.set(i,"X");
+                    if (network.isRunningAsHost) {
 
-
-                        Message mMessage = new Message();
-                        mMessage.description = "u wot m8";
-                        mMessage.mark = "X";
+                        if(isXTurn) {
+                            marks.set(i, "X");
+                            mMessage.marks = marks;
+                            isXTurn = false;
+                        }else{
+                            marks.set(i, "O");
+                            mMessage.marks = marks;
+                            isXTurn = true;
+                        }
                         mMessage.position = i;
+                        mMessage.isXTurn = isXTurn;
+                    } else {
+                        mMessage.position = i;
+                    }
+                    checkWinner();
 
+                    mMessage.isNewGame = false;
+                    mMessage.isGameOver = gameIsOver;
+                    if(network.isRunningAsHost){
+                        // SEND DATA TO ALL DEVICES IF HOST
                         network.sendToAllDevices(mMessage, new SalutCallback() {
                             @Override
                             public void call() {
                                 Log.e(TAG, "Oh no! The data failed to send.");
                             }
                         });
-
-                        isXTurn = false;
-                    } else {
-                        marks.set(i,"O");
-                        Message mMessage = new Message();
-                        mMessage.description = "u wot m8 again?";
-                        mMessage.mark = "O";
-                        mMessage.position = i;
-
+                    }else{
+                        // SEND DATA TO HOST IF NOT HOST
                         network.sendToHost(mMessage, new SalutCallback() {
                             @Override
                             public void call() {
                                 Log.e(TAG, "Oh no! The data failed to send.");
                             }
                         });
-                        isXTurn = true;
                     }
                 }
-                if(checkWinner(marks,"X")) {
-                    Toast.makeText(BoardActivity.this, "Player X Won", Toast.LENGTH_SHORT).show();
-                    gameIsOver = true;
-                }
-                else if(checkWinner(marks,"O")) {
-                    Toast.makeText(BoardActivity.this, "Player O Won", Toast.LENGTH_SHORT).show();
-                    gameIsOver = true;
-                }
-                else if(checkForDraw(marks)) {
-                    Toast.makeText(BoardActivity.this, "Game is Draw", Toast.LENGTH_SHORT).show();
-                    gameIsOver = true;
-                }
-                checkGameStatus();
+
+
+
                 adapter.notifyDataSetChanged();
             }
         });
+    }
+
+    private void checkWinner(){
+        if(checkWinner(marks,"X")) {
+            Toast.makeText(BoardActivity.this, "Player X Won", Toast.LENGTH_SHORT).show();
+            gameIsOver = true;
+        }
+        else if(checkWinner(marks,"O")) {
+            Toast.makeText(BoardActivity.this, "Player O Won", Toast.LENGTH_SHORT).show();
+            gameIsOver = true;
+        }
+        else if(checkForDraw(marks)) {
+            Toast.makeText(BoardActivity.this, "Game is Draw", Toast.LENGTH_SHORT).show();
+            gameIsOver = true;
+        }
     }
 
     private void checkGameStatus(){
@@ -202,6 +216,26 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
         btnRestart.setVisibility(View.GONE);
         adapter.notifyDataSetChanged();
 
+        Message message = new Message();
+        message.isNewGame = true;
+
+
+        if(network.isRunningAsHost)
+            network.sendToAllDevices(message, new SalutCallback() {
+                @Override
+                public void call() {
+
+                }
+            });
+
+        else{
+            network.sendToHost(message, new SalutCallback() {
+                @Override
+                public void call() {
+
+                }
+            });
+        }
     }
 
     private boolean checkForDraw(ArrayList<String> marks){
@@ -251,21 +285,54 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
             isXTurn = true;
     }
 
-
-
     @Override
     public void onDataReceived(Object o) {
         Log.d(TAG, "Received network data.");
         try
         {
             Log.d(TAG, o.toString());  //See you on the other side!
-
-
             Message newMessage = LoganSquare.parse(o.toString(), Message.class);
-            marks.set(newMessage.position,newMessage.mark);
+            if(network.isRunningAsHost){
+                // CHECK TURN IN CASE CLIENT STARTED
+
+                //isXTurn = newMessage.isXTurn;
+
+                if (isXTurn)
+                    marks.set(newMessage.position, "X");
+                else
+                    marks.set(newMessage.position, "O");
+                checkWinner();
+                checkGameStatus();
+
+                Message message = new Message();
+                message.marks = marks;
+                message.isXTurn = isXTurn;
+                message.isGameOver = gameIsOver;
+
+                network.sendToAllDevices(message, new SalutCallback() {
+                    @Override
+                    public void call() {
+                        Log.e(TAG, "Oh no! The data failed to send.");
+                    }
+                });
+
+            }else{
+                /*
+                if(newMessage.isNewGame)
+                    restartGame();
+                */
+
+                marks.clear();
+                marks.addAll(newMessage.marks);
+                isXTurn = newMessage.isXTurn;
+                gameIsOver = newMessage.isGameOver;
+                checkWinner();
+                checkGameStatus();
+                adapter = new ArrayAdapter<>(this,R.layout.mark_layout,marks);
+                gvBoard.setAdapter(adapter);
+            }
+
             adapter.notifyDataSetChanged();
-            checkGameStatus();
-            toggleTurn();
             //Log.d(TAG, newMessage.description);  //See you on the other side!
             //Do other stuff with data.
         }
@@ -279,15 +346,12 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
     public void onDestroy() {
         super.onDestroy();
 
-        if(isServer)
-            network.stopNetworkService(false);
-        else {
-            if(!network.isRunningAsHost){
-                if(network.isConnectedToAnotherDevice){
-                    network.cancelConnecting();
-                }
-            }
+        if(network.isRunningAsHost) {
 
+            network.stopServiceDiscovery(false);
+            network.stopNetworkService(false);
+        }else {
+            network.cancelConnecting();
         }
     }
 }
