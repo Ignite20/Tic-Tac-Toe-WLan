@@ -23,8 +23,6 @@ import com.peak.salut.SalutServiceData;
 import com.tests.amadalingradinaru.model.Message;
 import com.tests.amadalingradinaru.utils.TTTConstants;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 
@@ -138,7 +136,7 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
                 if(marks.get(i).equalsIgnoreCase(" ")) {
                     Message mMessage = new Message();
 
-                    if (network.isRunningAsHost) {
+                    if (network.isRunningAsHost || !isOnline) {
 
                         if(isXTurn) {
                             marks.set(i, "X");
@@ -155,25 +153,27 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
                         mMessage.position = i;
                     }
                     checkWinner();
-
-                    mMessage.isNewGame = false;
-                    mMessage.isGameOver = gameIsOver;
-                    if(network.isRunningAsHost){
-                        // SEND DATA TO ALL DEVICES IF HOST
-                        network.sendToAllDevices(mMessage, new SalutCallback() {
-                            @Override
-                            public void call() {
-                                Log.e(TAG, "Oh no! The data failed to send.");
-                            }
-                        });
-                    }else{
-                        // SEND DATA TO HOST IF NOT HOST
-                        network.sendToHost(mMessage, new SalutCallback() {
-                            @Override
-                            public void call() {
-                                Log.e(TAG, "Oh no! The data failed to send.");
-                            }
-                        });
+                    checkGameStatus();
+                    if(isOnline) {
+                        mMessage.isNewGame = false;
+                        mMessage.isGameOver = gameIsOver;
+                        if (network.isRunningAsHost) {
+                            // SEND DATA TO ALL DEVICES IF HOST
+                            network.sendToAllDevices(mMessage, new SalutCallback() {
+                                @Override
+                                public void call() {
+                                    Log.e(TAG, "Oh no! The data failed to send.");
+                                }
+                            });
+                        } else {
+                            // SEND DATA TO HOST IF NOT HOST
+                            network.sendToHost(mMessage, new SalutCallback() {
+                                @Override
+                                public void call() {
+                                    Log.e(TAG, "Oh no! The data failed to send.");
+                                }
+                            });
+                        }
                     }
                 }
 
@@ -211,7 +211,7 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
     void restartGame(){
         gvBoard.setEnabled(true);
         marks.clear();
-        Collections.addAll(marks, new String[]{" ", " ", " ", " ", " ", " ", " ", " ", " ",});
+        Collections.addAll(marks, " ", " ", " ", " ", " ", " ", " ", " ", " ");
         gameIsOver = false;
         btnRestart.setVisibility(View.GONE);
         adapter.notifyDataSetChanged();
@@ -346,12 +346,14 @@ public class BoardActivity extends AppCompatActivity implements SalutDataCallbac
     public void onDestroy() {
         super.onDestroy();
 
-        if(network.isRunningAsHost) {
+        if(isOnline) {
+            if (network.isRunningAsHost) {
 
-            network.stopServiceDiscovery(false);
-            network.stopNetworkService(false);
-        }else {
-            network.cancelConnecting();
+                network.stopServiceDiscovery(false);
+                network.stopNetworkService(false);
+            } else {
+                network.cancelConnecting();
+            }
         }
     }
 }
